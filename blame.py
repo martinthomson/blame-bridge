@@ -95,18 +95,25 @@ def blameCursor(filename):
 
 reformatTime = time.time();
 
-defaultBlame = BlameData('reformatter', 0, 0, {
-    'author': 'reformatter',
-    'author-mail': '<reformatter@mozilla.com>',
+defaultBlame = BlameData('newline', 0, 0, {
+    'author': 'blame-bridge',
+    'author-mail': '<blame-bridge@example.com>',
     'author-time': reformatTime,
     'author-tz': 'Z',
     'summary': 'Whitespace added by reformatter'
 })
 
 def augmentBlame(blame):
-    blame.data['summary'] = '%s\nReformatter applied %s' % (blame.data['summary'],
-                                                            time.asctime(time.gmtime(reformatTime)))
+    blame.data['summary'] = '%s\nFormatter applied %s' % (blame.data['summary'],
+                                                          time.asctime(time.gmtime(reformatTime)))
     return blame
+
+def pickNewest(blames):
+    newest = blames[0]
+    for b in blames[1:]:
+        if not 'committer-time' in b.data or int(b.data['committer-time']) > int(newest.data['committer-time']):
+            newest = b
+    return newest
 
 def concatIds(x, y):
     return x + '-' + y.id;

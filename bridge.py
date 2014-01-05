@@ -1,21 +1,12 @@
-#!/usr/bin/env python
-
-import argparse
 import subprocess
-import tempfile
 
 from sys import stdout, stderr, argv
 from collections import deque
 
 from diffu import parseDiff, writeMergedChunks
-from blame import blameCursor, defaultBlame, mergeBlames, augmentBlame
+from blame import blameCursor, defaultBlame, mergeBlames, augmentBlame, pickNewest
 
-output = argv[1]
-
-parser = argparse.ArgumentParser(description='Reformat code, maintain blame.')
-parser.add_argument('file', action='append')
-parser.add_argument('--verbose', '-v', action='count')
-args = parser.parse_args()
+verbose = 0
 
 def ignoreWhitespace(str):
     return ''.join(str.split())
@@ -26,27 +17,27 @@ def commonPart(a, b):
             return i
     return min(len(a), len(b))
 
-def walkLines(originalLines, changedLines):
+def findContributors(originalLines, changedLines):
+    """Finds the lines from originalLines that contribute to changedLines."""
     owalk = enumerate(map(ignoreWhitespace, originalLines)).__iter__()
     original = owalk.next()
     originalIdx = 0
     changedIdx = 0
-    busted = False
+    lastCompleteContributor = -1
     for changed in map(ignoreWhitespace, changedLines):
-        if busted:
-            yield ([], False)
+        if lastCompleteContributor is None:
+            yield (None, False)
             continue
 
-        contributingLines = []
         changedIdx = 0
 
         common = commonPart(original[1][originalIdx:], changed)
 
         try:
             while common == len(original[1]) - originalIdx:
-                contributingLines.append(original[0])
-                original = owalk.next()
+                lastCompleteContributor += 1
                 originalIdx = 0
+                original = owalk.next()
                 changedIdx += common
                 common = commonPart(original[1], changed[changedIdx:])
         except StopIteration as e:
@@ -58,16 +49,13 @@ def walkLines(originalLines, changedLines):
                 # something other than whitespace, without more sophisticated
                 # searching, this line is a no go, report zero contributors
                 # and give up on matching future lines
-                contributingLines = []
-                busted = True
-            else:
-                contributingLines.append(original[0])
+                lastCompleteContributor = None
         originalIdx += common
 
-        # return the set of contributing lines
-        # ...and whether this uses to the end of those lines
+        # return the last contributing line index
+        # ...and whether the next line is partially consumed
         # (which will determine if the patch can be safely split)
-        yield (contributingLines, originalIdx == 0)
+        yield (lastCompleteContributor, originalIdx != 0)
 
 def findBlame(blames, line):
     """Assuming the blames are sorted, as they are, find the one that owns the given line"""
@@ -76,37 +64,42 @@ def findBlame(blames, line):
             return blame
     raise RuntimeError('out of range, missing blame!')
 
-def allIn(items, completeSet):
-    return reduce(lambda x, i: x and i in completeSet, items)
-
 def attemptToSplitDiffChunkByBlame(chunk, allBlames):
-    contiguous = 0
-    savedBlames = set()
-    lastContributionComplete = False
-    lastContributionEnd = 0
+    previousBlame = None
+    previousContributionEnd = -1
 
+    # the number of lines we've looked at and are accumulating into a single chunk
+    pending = 0
+    # the number of lines we've already taken from the chunk
     originalTaken = 0
-    for (contributors, complete) in walkLines(chunk.original.lines, chunk.changed.lines):
+    for (lastCompleteContributor, partial) in findContributors(chunk.original.lines, chunk.changed.lines):
 
-        if len(contributors) > 0:
+        if lastCompleteContributor is not None:
+            contributors = range(originalTaken, lastCompleteContributor + 1)
+            if partial:
+                contributors.append(lastCompleteContributor + 1)
             absoluteContributors = map(lambda i: chunk.original.start + i - originalTaken, contributors)
-            lineBlames = set(map(lambda line: findBlame(allBlames, line), absoluteContributors))
-            lastContributionEnd = max(contributors)
+            lineBlames = map(lambda line: findBlame(allBlames, line), absoluteContributors)
         else:
-            lineBlames = set(allBlames)
+            # bad, blame the latest person to commit
+            lineBlames = allBlames
+            if verbose > 0:
+                print('Warning: the following chunk cannot be attributed:')
+                writeMergedChunks([chunk], stdout)
+        lineBlame = pickNewest(lineBlames)
 
-        if lastContributionComplete and not lineBlames.issubset(savedBlames):
-            toTakeFromOriginal = lastContributionEnd - originalTaken
+        if previousContributionEnd >= 0 and lineBlame.id != previousBlame.id:
+            toTakeFromOriginal = previousContributionEnd - originalTaken
             originalTaken += toTakeFromOriginal
-            yield (chunk.take(toTakeFromOriginal, contiguous), mergeBlames(savedBlames))
-            contiguous = 0
+            yield (chunk.take(toTakeFromOriginal, pending), previousBlame)
+            pending = 0
             savedBlames.clear()
-        savedBlames = savedBlames.union(lineBlames)
-        lastContributionComplete = complete
-        contiguous += 1
-    yield (chunk, mergeBlames(savedBlames))
+        previousBlame = lineBlame
+        previousContributionEnd = lastCompleteContributor
+        pending += 1
+    yield (chunk, previousBlame)
 
-def processChunks(diffOutput, filename):
+def processDiff(diffOutput, filename):
     blames = blameCursor(filename)
     for chunk in parseDiff(diffOutput):
         if chunk.original.count() > 0:
@@ -142,7 +135,7 @@ def collectChunks(blameId, all):
             for c in chunks:
                 all[i][0].update(c)
             i += 1
-    if args.verbose > 0:
+    if verbose > 0:
         print('Chunks: %d' % len(chunks))
     return chunks
 
@@ -168,7 +161,7 @@ def printChunks(chunks, patchFile):
     printSaved()
 
 
-def producePatches(blameGenerator, filename):
+def writePatches(blameGenerator, filename):
     fullname = subprocess.check_output(['git', 'ls-files', '--full-name', filename])[:-1]
     counter = 0
     chunkCount = 0
@@ -180,9 +173,9 @@ def producePatches(blameGenerator, filename):
         patchname = '%s.blame-bridge%3.3d' % (filename, counter)
         with open(patchname, 'w') as patchFile:
             patchFile.write(augmentBlame(blame).header())
-            if args.verbose > 0:
+            if verbose > 0:
                 print('--- %s' % patchname)
-                if args.verbose > 1:
+                if verbose > 1:
                     print(blame.header())
             patchFile.write('--- a/%s\n' % fullname)
             patchFile.write('+++ b/%s\n' % fullname)
@@ -195,14 +188,5 @@ def producePatches(blameGenerator, filename):
             printChunks(chunks, patchFile)
     print('# %s: %d patches over %d chunks created\n' % (filename, counter, chunkCount))
 
-
-for file in args.file:
-    try:
-        beautify = subprocess.Popen(['js-beautify', '-s', '2', file],
-                                    stdout=subprocess.PIPE, stderr=stderr)
-        diff = subprocess.Popen(['diff', '-u', '-d', file, '-'],
-                                stdin=beautify.stdout, stdout=subprocess.PIPE)
-        producePatches(processChunks(diff.stdout, file), file)
-    except OSError as e:
-        stderr.write('error formatting: %s' % e)
-        exit(1)
+def producePatches(reformatted, filename):
+    writePatches(processDiff(reformatted, filename), filename)
