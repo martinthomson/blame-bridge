@@ -1,9 +1,8 @@
-blame-bridge
-============
+# blame-bridge
 
 Beautify code without losing blame labels
 
-# Reformat your code
+## Reformat your code
 
 Any serious project has a coding standard, but it's often the case that existing code
 doesn't always conform to that standard.  Maybe the standard has been changed, or maybe
@@ -20,7 +19,6 @@ Now it's easy:
 $ blame-bridge.py file1.js file2.js
 # file1.js: 30 patches over 58 chunks created
 # file2.js: 5 patches over 12 chunks created
-
 ```
 
 blame-bridge doesn't alter files directly, instead it creates a numbered set of
@@ -32,7 +30,7 @@ $ (for i in *blame-bridge*; do echo "$i"; git am "$i" || exit 1; done)
 ...
 ```
 
-# Limitations
+## Limitations
 
 This only supports git.  There are some small dependencies in a few places, but
 the major problem is the dependency on the output of `git blame -p`.
