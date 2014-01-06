@@ -4,6 +4,8 @@ import time
 import calendar
 from datetime import datetime
 
+reformatTime = time.time();
+
 class BlameData:
     def __init__(self, id, start, end, data):
         self.id = id
@@ -32,6 +34,19 @@ class BlameData:
 
     def __eq__(x, y):
         return x.id == y.id
+
+    def augment(self):
+        self.data['summary'] = '%s\nReformatted %s; original %s' % (self.data['summary'],
+                                                                    time.asctime(time.gmtime(reformatTime)),
+                                                                    self.id)
+
+defaultBlame = BlameData('newline', 0, 0, {
+    'author': 'blame-bridge',
+    'author-mail': '<blame-bridge@example.com>',
+    'author-time': reformatTime,
+    'author-tz': 'Z',
+    'summary': 'Whitespace added by reformatter'
+})
 
 def readCommitData(blameOutput, id):
     commitData = {}
@@ -93,20 +108,6 @@ def pipeBlame(filename):
 def blameCursor(filename):
     return BlameCursor(pipeBlame(filename))
 
-reformatTime = time.time();
-
-defaultBlame = BlameData('newline', 0, 0, {
-    'author': 'blame-bridge',
-    'author-mail': '<blame-bridge@example.com>',
-    'author-time': reformatTime,
-    'author-tz': 'Z',
-    'summary': 'Whitespace added by reformatter'
-})
-
-def augmentBlame(blame):
-    blame.data['summary'] = '%s\nFormatter applied %s' % (blame.data['summary'],
-                                                          time.asctime(time.gmtime(reformatTime)))
-    return blame
 
 def pickNewest(blames):
     newest = blames[0]

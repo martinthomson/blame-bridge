@@ -4,7 +4,7 @@ from sys import stdout, stderr, argv
 from collections import deque
 
 from diffu import parseDiff, writeMergedChunks
-from blame import blameCursor, defaultBlame, mergeBlames, augmentBlame, pickNewest
+from blame import blameCursor, defaultBlame, mergeBlames, pickNewest
 
 verbose = 0
 ignoreCharacters = ' \t\r\n'
@@ -180,7 +180,8 @@ def writePatches(blameGenerator, filename):
         counter += 1
         patchname = '%s.blame-bridge%3.3d' % (filename, counter)
         with open(patchname, 'w') as patchFile:
-            patchFile.write(augmentBlame(blame).header())
+            blame.augment()
+            patchFile.write(blame.header())
             if verbose > 0:
                 print('--- %s' % patchname)
                 if verbose > 1:
