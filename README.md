@@ -17,7 +17,7 @@ to seamlessly move code across, retaining blames.
 Now it's easy:
 
 ```sh
-$ blame-bridge/main.py file1.js file2.js
+$ blame-bridge/main.py file1.js file2.js --formatter js-beautify {input}
 # file1.js: 30 patches over 58 chunks created
 # file2.js: 5 patches over 12 chunks created
 ```
