@@ -16,7 +16,7 @@ h += 'use {input} to represent input file name, {output} to represent output fil
 parser.add_argument('files', nargs='+', help=h)
 h = 'files to reformat'
 parser.add_argument('--formatter', '-f', nargs=argparse.REMAINDER, help=h)
-h = 'characters to ignore when comparing lines [default: " \t\r\n"]'
+h = 'characters to ignore when comparing lines [default: " \\t\\r\\n"]'
 parser.add_argument('--ignore', '-i', default=' \t\r\n', help=h)
 parser.add_argument('--verbose', '-v', action='count')
 args = parser.parse_args()
