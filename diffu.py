@@ -15,7 +15,7 @@ class DiffLines:
         self.lines = lines
 
     def take(self, n):
-        if n >= len(self.lines):
+        if n > len(self.lines):
             raise ValueError('not enough lines remaining')
         piece = DiffLines(self.start, self.lines[:n])
         self.start += n
@@ -75,26 +75,30 @@ class DiffChunk:
     def update(self, other):
         """Takes the other patch chunk and assumes that it's been applied.
         Returns True if changes were made"""
-        if other.changed.end <= self.original.start:
+        print('updating...')
+        writeMergedChunks([self], stdout)
+        writeMergedChunks([other], stdout)
+
+        if other.changed.start <= self.original.start:
             self.original.bump(other.delta())
 
             # overlap on the preContext part
             overlap = other.changed.end - (self.original.start - len(self.preContext))
             if overlap > 0:
-                ostart = max(0, overlap - other.original.count())
-                self.preContext[ostart:overlap] = other.changed.lines
+
+                self.preContext[:overlap] = other.preContext + other.changed.lines
                 self.preContext = self.preContext[-contextLines:]
+                writeMergedChunks([self], stdout)
             return True
-        if other.changed.start >= self.original.end:
+        if other.changed.end >= self.original.end:
         # overlap on the postContext part
             overlap = self.original.end + len(self.postContext) - other.changed.start
             if overlap > 0:
+                print('updating2...')
 
-                oend = min(0, other.original.count() - overlap)
-                oend += len(self.postContext)
-
-                self.postContext[-overlap:oend] = other.changed.lines
+                self.postContext[-overlap:] = other.changed.lines + other.postContext
                 self.postContext = self.postContext[:contextLines]
+                writeMergedChunks([self], stdout)
                 return True
         return False
 
@@ -135,8 +139,9 @@ def saveContext(line, context, pendingChunks):
 
 def parseDiff(input):
     line = input.readline()
-    if line[:3] == '---':
+    while line != '' and line[:3] != '---':
         line = input.readline()
+    line = input.readline()
     if line[:3] == '+++':
         line = input.readline()
 

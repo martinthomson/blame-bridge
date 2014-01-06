@@ -7,9 +7,10 @@ from diffu import parseDiff, writeMergedChunks
 from blame import blameCursor, defaultBlame, mergeBlames, augmentBlame, pickNewest
 
 verbose = 0
+ignoreCharacters = ' \t\r\n'
 
 def ignoreWhitespace(str):
-    return ''.join(str.split())
+    return str.translate(None, ignoreCharacters)
 
 def commonPart(a, b):
     for i, (ca, cb) in enumerate(zip(a, b)):
@@ -24,6 +25,7 @@ def findContributors(originalLines, changedLines):
     originalIdx = 0
     changedIdx = 0
     lastCompleteContributor = -1
+
     for changed in map(ignoreWhitespace, changedLines):
         if lastCompleteContributor is None:
             yield (None, False)
@@ -55,7 +57,7 @@ def findContributors(originalLines, changedLines):
         # return the last contributing line index
         # ...and whether the next line is partially consumed
         # (which will determine if the patch can be safely split)
-        yield (lastCompleteContributor, originalIdx != 0)
+        yield (lastCompleteContributor, originalIdx)
 
 def findBlame(blames, line):
     """Assuming the blames are sorted, as they are, find the one that owns the given line"""
@@ -66,7 +68,7 @@ def findBlame(blames, line):
 
 def attemptToSplitDiffChunkByBlame(chunk, allBlames):
     previousBlame = None
-    previousContributionEnd = -1
+    previousContributionEnd = 0
 
     # the number of lines we've looked at and are accumulating into a single chunk
     pending = 0
@@ -74,28 +76,34 @@ def attemptToSplitDiffChunkByBlame(chunk, allBlames):
     originalTaken = 0
     for (lastCompleteContributor, partial) in findContributors(chunk.original.lines, chunk.changed.lines):
 
+        #writeMergedChunks([chunk], stdout)
+        # fallback to the default (for new blank lines)
+        lineBlame = defaultBlame
         if lastCompleteContributor is not None:
-            contributors = range(originalTaken, lastCompleteContributor + 1)
-            if partial:
+            lastCompleteContributor -= originalTaken
+            contributors = range(previousContributionEnd, lastCompleteContributor + 1)
+            if partial > 0:
                 contributors.append(lastCompleteContributor + 1)
-            absoluteContributors = map(lambda i: chunk.original.start + i - originalTaken, contributors)
-            lineBlames = map(lambda line: findBlame(allBlames, line), absoluteContributors)
-        else:
-            # bad, blame the latest person to commit
-            lineBlames = allBlames
-            if verbose > 0:
-                print('Warning: the following chunk cannot be attributed:')
-                writeMergedChunks([chunk], stdout)
-        lineBlame = pickNewest(lineBlames)
+            print('contrib', previousContributionEnd, lastCompleteContributor, partial, contributors)
+            print('taken', originalTaken)
+            if len(contributors) > 0:
+                absoluteContributors = map(lambda i: chunk.original.start + i - originalTaken, contributors)
+                lineBlames = map(lambda line: findBlame(allBlames, line), absoluteContributors)
+                lineBlame = pickNewest(lineBlames)
 
-        if previousContributionEnd >= 0 and lineBlame.id != previousBlame.id:
-            toTakeFromOriginal = previousContributionEnd - originalTaken
-            originalTaken += toTakeFromOriginal
-            yield (chunk.take(toTakeFromOriginal, pending), previousBlame)
+        print('blame', lineBlame.id)
+        print('line +%s' % chunk.changed.lines[pending])
+        #print('contrib -%s' % 'contrib -'.join(chunk.original.lines[:lastCompleteContributor + 1]))
+
+        if previousContributionEnd > 0 and lineBlame.id != previousBlame.id:
+            print('take %d, %d' % (previousContributionEnd, pending))
+            yield (chunk.take(previousContributionEnd, pending), previousBlame)
+            originalTaken += previousContributionEnd
             pending = 0
-            savedBlames.clear()
+            lastCompleteContributor -= previousContributionEnd
+        if lastCompleteContributor is not None:
+            previousContributionEnd = lastCompleteContributor + 1
         previousBlame = lineBlame
-        previousContributionEnd = lastCompleteContributor
         pending += 1
     yield (chunk, previousBlame)
 
@@ -108,7 +116,11 @@ def processDiff(diffOutput, filename):
                 yield (chunk, chunkBlames.popleft())
             else:
                 # Now things get tricky
+                print('tosplit')
+                writeMergedChunks([chunk], stdout)
                 for piece in attemptToSplitDiffChunkByBlame(chunk, chunkBlames):
+                    print('splitchunk')
+                    writeMergedChunks([piece[0]], stdout)
                     yield piece
         else:
             yield (chunk, defaultBlame)
