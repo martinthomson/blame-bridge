@@ -75,9 +75,6 @@ class DiffChunk:
     def update(self, other):
         """Takes the other patch chunk and assumes that it's been applied.
         Returns True if changes were made"""
-        print('updating...')
-        writeMergedChunks([self], stdout)
-        writeMergedChunks([other], stdout)
 
         if other.original.start <= self.original.start:
             # overlap on the preContext part
@@ -86,22 +83,17 @@ class DiffChunk:
             overlap = other.original.end - (self.original.start - len(self.preContext))
             if overlap > 0:
                 overlapstart = max(0, overlap - other.original.count())
-                print('ostart:overlap %d:%d' % (overlapstart, overlap))
                 self.preContext[overlapstart:overlap] = other.changed.lines
-                writeMergedChunks([self], stdout)
                 self.preContext = self.preContext[-contextLines:]
-                writeMergedChunks([self], stdout)
             return True
 
         if other.original.end >= self.original.end:
             # overlap on the postContext part
             overlap = self.original.end + len(self.postContext) - other.original.start
             if overlap > 0:
-                print('updating2...')
                 oend = len(self.postContext) - overlap + other.original.count()
                 self.postContext[-overlap:oend] = other.changed.lines
                 self.postContext = self.postContext[:contextLines]
-                writeMergedChunks([self], stdout)
                 return True
         return False
 

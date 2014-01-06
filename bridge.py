@@ -84,19 +84,12 @@ def attemptToSplitDiffChunkByBlame(chunk, allBlames):
             contributors = range(previousContributionEnd, lastCompleteContributor + 1)
             if partial > 0:
                 contributors.append(lastCompleteContributor + 1)
-            print('contrib', previousContributionEnd, lastCompleteContributor, partial, contributors)
-            print('taken', originalTaken)
             if len(contributors) > 0:
                 absoluteContributors = map(lambda i: chunk.original.start + i - originalTaken, contributors)
                 lineBlames = map(lambda line: findBlame(allBlames, line), absoluteContributors)
                 lineBlame = pickNewest(lineBlames)
 
-        print('blame', lineBlame.id)
-        print('line +%s' % chunk.changed.lines[pending])
-        #print('contrib -%s' % 'contrib -'.join(chunk.original.lines[:lastCompleteContributor + 1]))
-
         if previousContributionEnd > 0 and lineBlame.id != previousBlame.id:
-            print('take %d, %d' % (previousContributionEnd, pending))
             yield (chunk.take(previousContributionEnd, pending), previousBlame)
             originalTaken += previousContributionEnd
             pending = 0
@@ -116,18 +109,16 @@ def processDiff(diffOutput, filename):
                 yield (chunk, chunkBlames.popleft())
             else:
                 # Now things get tricky
-                print('tosplit')
-                writeMergedChunks([chunk], stdout)
                 for piece in attemptToSplitDiffChunkByBlame(chunk, chunkBlames):
-                    print('splitchunk')
-                    writeMergedChunks([piece[0]], stdout)
                     yield piece
         else:
             yield (chunk, defaultBlame)
 
 def collectChunks(blameId, all):
-    """Looks through the list of chunks for ones that match the blameId
-    it saves those."""
+    """Looks through the list of chunks for ones that match the blameId it saves
+    those.  For chunks that are not selected, it applies the diff for each of
+    the selected chunks to their context lines.
+    """
     chunks = []
     i = 0
     while i < len(all):
@@ -150,6 +141,12 @@ def collectChunks(blameId, all):
 
 
 def fixLineNumbers(chunks, all):
+    """Since the selected chunks have been taken out of context, we have to update
+    their lines as though they are the only chunks around.  All the other chunks
+    need their original line numbers updated as though the selected chunks were
+    already applied (because by the time we use those other chunks, this will be
+    the case.
+    """
     for i, c in enumerate(chunks):
         c.resetChangedLineStart()
         for later in chunks[i+1:]:
