@@ -135,9 +135,6 @@ def collectChunks(blameId, all):
         if blame.id == blameId:
             del all[i]
             chunk.resetChangedLineStart()
-            for c in chunks:
-                chunk.bumpChangedLineStart(c)
-
             chunks.append(chunk)
 
             # apply fixup to all remaining chunks
@@ -152,11 +149,13 @@ def collectChunks(blameId, all):
     return chunks
 
 
-def fixLineNumbers(chunks):
+def fixLineNumbers(chunks, all):
     for i, c in enumerate(chunks):
         c.resetChangedLineStart()
         for later in chunks[i+1:]:
-            later.bumpChangedLineStart(c)
+            later.bumpChanged(c)
+        for other, blame in all:
+            other.bumpOriginal(c)
 
 
 def printChunks(chunks, patchFile):
@@ -195,7 +194,7 @@ def writePatches(blameGenerator, filename):
             chunks = collectChunks(blame.id, all)
             chunkCount += len(chunks)
 
-            fixLineNumbers(chunks)
+            fixLineNumbers(chunks, all)
 
             printChunks(chunks, patchFile)
     print('# %s: %d patches over %d chunks created\n' % (filename, counter, chunkCount))

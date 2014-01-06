@@ -79,24 +79,27 @@ class DiffChunk:
         writeMergedChunks([self], stdout)
         writeMergedChunks([other], stdout)
 
-        if other.changed.start <= self.original.start:
-            self.original.bump(other.delta())
-
+        if other.original.start <= self.original.start:
             # overlap on the preContext part
-            overlap = other.changed.end - (self.original.start - len(self.preContext))
-            if overlap > 0:
+            #self.original.bump(other.delta())
 
-                self.preContext[:overlap] = other.preContext + other.changed.lines
+            overlap = other.original.end - (self.original.start - len(self.preContext))
+            if overlap > 0:
+                overlapstart = max(0, overlap - other.original.count())
+                print('ostart:overlap %d:%d' % (overlapstart, overlap))
+                self.preContext[overlapstart:overlap] = other.changed.lines
+                writeMergedChunks([self], stdout)
                 self.preContext = self.preContext[-contextLines:]
                 writeMergedChunks([self], stdout)
             return True
-        if other.changed.end >= self.original.end:
-        # overlap on the postContext part
-            overlap = self.original.end + len(self.postContext) - other.changed.start
+
+        if other.original.end >= self.original.end:
+            # overlap on the postContext part
+            overlap = self.original.end + len(self.postContext) - other.original.start
             if overlap > 0:
                 print('updating2...')
-
-                self.postContext[-overlap:] = other.changed.lines + other.postContext
+                oend = len(self.postContext) - overlap + other.original.count()
+                self.postContext[-overlap:oend] = other.changed.lines
                 self.postContext = self.postContext[:contextLines]
                 writeMergedChunks([self], stdout)
                 return True
@@ -107,7 +110,11 @@ class DiffChunk:
         at the same line number.  This makes it so."""
         self.changed.setStart(self.original.start)
 
-    def bumpChangedLineStart(self, other):
+    def bumpOriginal(self, other):
+        if other.changed.start <= self.original.start:
+            self.original.bump(other.delta())
+
+    def bumpChanged(self, other):
         """Takes the other patch and assumes that it's in the same patch set.
         When patches are grouped together, the line counts on the changed end
         need to be incremented based on what has come before.
