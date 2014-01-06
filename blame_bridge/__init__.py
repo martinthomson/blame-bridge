@@ -9,7 +9,7 @@ from sys import stderr, stdout, stdin
 
 import bridge
 
-def main():
+def main(argv):
     parser = argparse.ArgumentParser(description='Reformat code, maintain blame.',
                                      usage='%(prog)s [options] files [...] -f formatter [formatter options]')
     h = 'files to reformat'
@@ -21,7 +21,7 @@ def main():
     h += 'include those characters that the formatter might change [default: " \\t\\r\\n"]'
     parser.add_argument('--ignore', '-i', default=' \t\r\n', help=h)
     parser.add_argument('--verbose', '-v', action='count')
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     bridge.verbose = args.verbose
     bridge.ignoreCharacters = args.ignore

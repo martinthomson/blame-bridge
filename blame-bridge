@@ -3,5 +3,5 @@
 # Stub script to run blame-bridge
 #
 import sys
-import blame_bridge import main
-sys.exit(main())
+from blame_bridge import main
+sys.exit(main(sys.argv))
